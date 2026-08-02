@@ -9,7 +9,7 @@ import { LiveInterviewRoom } from '../components/interview/LiveInterviewRoom';
 import { InterviewReportView } from '../components/interview/InterviewReportView';
 import { AiCoachModal } from '../components/interview/AiCoachModal';
 import { Card } from '../components/Card';
-import { Button } from '../Button';
+import { Button } from '../components/Button';
 import {
   Sparkles,
   History,

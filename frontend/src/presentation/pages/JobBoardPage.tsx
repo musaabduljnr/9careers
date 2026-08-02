@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useJobBoardStore } from '../../application/stores/useJobBoardStore';
 import { JobFeedData, Job, OneClickPrepPackage } from '../../domain/types';
 import { Card } from '../components/Card';
-import { Button } from '../Button';
+import { Button } from '../components/Button';
 import { JobCard } from '../components/job_board/JobCard';
 import { SmartFiltersSidebar } from '../components/job_board/SmartFiltersSidebar';
 import { OneClickPrepModal } from '../components/job_board/OneClickPrepModal';
