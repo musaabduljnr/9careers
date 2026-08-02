@@ -28,6 +28,7 @@ export const Sidebar: React.FC = () => {
 
   const menuItems = [
     { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
+    { name: 'AI Job Discovery', path: '/job-board', icon: Sparkles },
     { name: 'ATS Optimizer', path: '/resume-optimizer', icon: FileText },
     { name: 'CV Templates', path: '/resume-templates', icon: Layers },
     { name: 'Cover Letters', path: '/cover-letter', icon: FileSignature },

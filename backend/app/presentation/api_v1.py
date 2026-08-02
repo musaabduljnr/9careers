@@ -467,7 +467,26 @@ async def get_cover_letters(
     return cls
 
 
-# --- INTERVIEW ENDPOINTS ---
+# --- ENTERPRISE INTERVIEW SIMULATOR ENDPOINTS ---
+
+@router.post("/interviews/setup", response_model=schemas.InterviewPrepProfileResponse)
+async def setup_interview(
+    req: schemas.InterviewSetupRequest,
+    current_user: User = Depends(get_current_user)
+):
+    ai_provider = AIProviderFactory.get_provider()
+    use_case = InterviewSimulatorUseCase(ai_provider, None, None)
+    
+    prep_data = await use_case.prepare_candidate(
+        target_role=req.job_role,
+        company=req.company,
+        difficulty=req.difficulty,
+        interview_type=req.interview_type,
+        resume_text=req.resume_text or "",
+        job_description=req.job_description or ""
+    )
+    return prep_data
+
 
 @router.post("/interviews/start", response_model=schemas.InterviewStartResponse)
 async def start_interview(
@@ -483,16 +502,30 @@ async def start_interview(
     session = await use_case.start_session(
         user_id=current_user.id,
         job_role=req.job_role,
-        industry=req.industry
+        company=req.company,
+        industry=req.industry,
+        interview_type=req.interview_type,
+        difficulty=req.difficulty,
+        duration_minutes=req.duration_minutes,
+        interview_style=req.interview_style,
+        voice_enabled=req.voice_enabled,
+        language=req.language,
+        resume_text=req.resume_text or "",
+        job_description=req.job_description or ""
     )
     
     first_q = session.questions[0]
     return {
         "session_id": session.id,
         "job_role": session.job_role,
-        "industry": session.industry,
+        "company": session.company,
+        "interview_type": session.interview_type,
+        "difficulty": session.difficulty,
+        "duration_minutes": session.duration_minutes,
         "first_question": first_q.question_text,
-        "question_order": first_q.question_order
+        "question_category": first_q.category,
+        "question_order": first_q.question_order,
+        "prep_profile": session.prep_profile
     }
 
 
@@ -508,8 +541,106 @@ async def respond_to_question(
     user_repo = UserRepositoryImpl(db)
     use_case = InterviewSimulatorUseCase(ai_provider, interview_repo, user_repo)
     
-    result = await use_case.respond_to_question(session_id, req.user_answer)
+    result = await use_case.respond_to_question(
+        session_id,
+        user_answer=req.user_answer,
+        elapsed_seconds=req.elapsed_seconds or 0
+    )
     return result
+
+
+@router.post("/interviews/sessions/{session_id}/action", response_model=schemas.SessionActionResponse)
+async def perform_session_action(
+    session_id: str,
+    req: schemas.SessionActionRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    interview_repo = InterviewRepositoryImpl(db)
+    session = await interview_repo.get_session_by_id(session_id)
+    if not session or session.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    
+    action = req.action.lower()
+    if action == "pause":
+        session.status = "paused"
+        msg = "Interview session paused"
+    elif action == "resume":
+        session.status = "active"
+        msg = "Interview session resumed"
+    elif action == "end":
+        session.status = "completed"
+        ai_provider = AIProviderFactory.get_provider()
+        from backend.app.application.interview_engine import ReportEngine
+        report_engine = ReportEngine(ai_provider)
+        full_rep = await report_engine.generate_report(session)
+        session.full_report = full_rep
+        session.coach_advice = full_rep.get("coach_advice", {})
+        session.score = full_rep.get("overall_score", 75)
+        msg = "Interview session completed"
+    else:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid action")
+    
+    await interview_repo.update_session(session)
+    return {
+        "session_id": session_id,
+        "status": session.status,
+        "message": msg
+    }
+
+
+@router.get("/interviews/sessions/{session_id}/report", response_model=schemas.InterviewReportResponse)
+async def get_interview_report(
+    session_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    interview_repo = InterviewRepositoryImpl(db)
+    session = await interview_repo.get_session_by_id(session_id)
+    if not session or session.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    
+    if not session.full_report:
+        ai_provider = AIProviderFactory.get_provider()
+        from backend.app.application.interview_engine import ReportEngine
+        report_engine = ReportEngine(ai_provider)
+        full_rep = await report_engine.generate_report(session)
+        session.full_report = full_rep
+        session.coach_advice = full_rep.get("coach_advice", {})
+        session.score = full_rep.get("overall_score", 75)
+        await interview_repo.update_session(session)
+    
+    rep = session.full_report
+    formatted_transcript = []
+    for q in session.questions:
+        formatted_transcript.append({
+            "order": q.question_order,
+            "category": q.category,
+            "question": q.question_text,
+            "answer": q.user_answer or "(No response)",
+            "feedback": q.ai_feedback or "",
+            "score": q.ai_score or 0,
+            "scores_detail": q.scores_detail or {}
+        })
+
+    return {
+        "session_id": session.id,
+        "job_role": session.job_role,
+        "company": session.company,
+        "interview_type": session.interview_type,
+        "difficulty": session.difficulty,
+        "overall_score": session.score or rep.get("overall_score", 80),
+        "hiring_recommendation": rep.get("hiring_recommendation", "Hire"),
+        "likelihood_of_passing_percent": rep.get("likelihood_of_passing_percent", 85),
+        "category_scores": session.category_scores or rep.get("category_scores", {}),
+        "strengths": rep.get("strengths", []),
+        "weaknesses": rep.get("weaknesses", []),
+        "missed_opportunities": rep.get("missed_opportunities", []),
+        "recommended_improvements": rep.get("recommended_improvements", []),
+        "suggested_learning_resources": rep.get("suggested_learning_resources", []),
+        "coach_advice": session.coach_advice or rep.get("coach_advice", {}),
+        "transcript": formatted_transcript
+    }
 
 
 @router.get("/interviews/sessions", response_model=List[Dict[str, Any]])
@@ -522,10 +653,16 @@ async def get_interview_sessions(
     return [
         {
             "id": s.id,
+            "interview_type": s.interview_type,
             "job_role": s.job_role,
+            "company": s.company,
             "industry": s.industry,
+            "difficulty": s.difficulty,
             "status": s.status,
             "score": s.score,
+            "duration_minutes": s.duration_minutes,
+            "elapsed_seconds": s.elapsed_seconds,
+            "questions_count": len(s.questions),
             "created_at": s.created_at
         } for s in sessions
     ]

@@ -186,3 +186,214 @@ export interface InterviewQuestionBank {
   preparation_tips: string[];
   company_research_notes: string;
 }
+
+// --- Enterprise AI Interview Simulator Types ---
+export type InterviewModeType =
+  | 'General HR'
+  | 'Behavioral'
+  | 'Technical'
+  | 'Software Engineering'
+  | 'Frontend'
+  | 'Backend'
+  | 'Python'
+  | 'React'
+  | 'AI Engineer'
+  | 'Data Analyst'
+  | 'Product Manager'
+  | 'UI/UX Designer'
+  | 'Customer Support'
+  | 'Sales'
+  | 'Graduate'
+  | 'NYSC'
+  | 'Internship'
+  | 'Remote Jobs'
+  | 'Custom Interview';
+
+export type DifficultyLevel = 'junior' | 'mid' | 'senior' | 'principal';
+export type InterviewStyle = 'friendly' | 'professional' | 'strict' | 'startup' | 'corporate';
+export type DurationMinutes = 10 | 20 | 30 | 45;
+
+export interface InterviewSetupConfig {
+  interview_type: InterviewModeType;
+  job_role: string;
+  company: string;
+  difficulty: DifficultyLevel;
+  duration_minutes: DurationMinutes;
+  interview_style: InterviewStyle;
+  voice_enabled: boolean;
+  language: string;
+  resume_text: string;
+  job_description: string;
+}
+
+export interface PrepProfile {
+  candidate_summary: string;
+  target_role: string;
+  company: string;
+  difficulty: string;
+  key_strengths: string[];
+  perceived_weaknesses: string[];
+  missing_skills: string[];
+  likely_questions: string[];
+  interview_strategy: string;
+  focus_areas: string[];
+}
+
+export interface ScoreBreakdown {
+  communication: number;
+  technical_accuracy: number;
+  problem_solving: number;
+  leadership: number;
+  confidence: number;
+  star_method: number;
+  clarity: number;
+  depth: number;
+  relevance: number;
+  professionalism: number;
+}
+
+export interface TranscriptItem {
+  order: number;
+  category: string;
+  question: string;
+  answer: string;
+  feedback?: string;
+  score?: number;
+  scores_detail?: ScoreBreakdown;
+  timestamp?: string;
+}
+
+export interface CoachAdviceData {
+  what_went_well: string;
+  what_needs_improvement: string;
+  example_better_answers: Array<{
+    question: string;
+    better_answer: string;
+  }>;
+  action_plan: string[];
+}
+
+export interface InterviewReportData {
+  session_id: string;
+  job_role: string;
+  company: string;
+  interview_type: string;
+  difficulty: string;
+  overall_score: number;
+  hiring_recommendation: string;
+  likelihood_of_passing_percent: number;
+  category_scores: Record<string, number>;
+  strengths: string[];
+  weaknesses: string[];
+  missed_opportunities: string[];
+  recommended_improvements: string[];
+  coach_advice: CoachAdviceData;
+  transcript: TranscriptItem[];
+}
+
+// --- Enterprise AI Job Board Types ---
+export interface JobMatchBreakdown {
+  overall_match_score: number;
+  skill_match_score: number;
+  experience_match_score: number;
+  education_match_score: number;
+  keyword_match_score: number;
+  interview_likelihood_percent: number;
+  readiness_percent: number;
+  missing_skills: string[];
+  missing_keywords: string[];
+  match_reasons: string[];
+  learning_path: string[];
+}
+
+export interface Job {
+  id: number;
+  title: string;
+  company_name: string;
+  company_logo?: string | null;
+  source_name: string;
+  location: string;
+  remote_status: 'Remote' | 'Hybrid' | 'Onsite';
+  employment_type: 'Full-time' | 'Part-time' | 'Contract' | 'Internship';
+  experience_level: 'Entry Level' | 'Mid Level' | 'Senior' | 'Executive';
+  salary_formatted: string;
+  skills: string[];
+  tags: string[];
+  date_posted: string;
+  is_featured?: boolean;
+  is_urgent?: boolean;
+  visa_sponsorship?: boolean;
+  nysc_friendly?: boolean;
+  description?: string;
+  responsibilities?: string[];
+  qualifications?: string[];
+  benefits?: string[];
+  application_url?: string;
+  match?: JobMatchBreakdown;
+}
+
+export interface CompanySummary {
+  id: number;
+  name: string;
+  logo_url?: string | null;
+  industry: string;
+  open_positions_count: number;
+  average_match_score: number;
+  description?: string;
+  website?: string;
+  headquarters?: string;
+  size?: string;
+}
+
+export interface JobFeedData {
+  top_matches: Job[];
+  recently_posted: Job[];
+  remote_jobs: Job[];
+  urgent_hiring: Job[];
+  trending_companies: CompanySummary[];
+  total_jobs_count: number;
+}
+
+export interface OneClickPrepPackage {
+  job_id: number;
+  job_title: string;
+  company_name: string;
+  tailored_resume_text: string;
+  cover_letter_text: string;
+  estimated_ats_score: number;
+  expected_interview_questions: string[];
+  company_research_notes: string;
+  application_checklist: string[];
+}
+
+export interface JobApplicationItem {
+  application_id: number;
+  job_id: number;
+  status: 'saved' | 'applied' | 'interview' | 'assessment' | 'offer' | 'rejected' | 'withdrawn';
+  notes?: string | null;
+  job_title: string;
+  company_name: string;
+  company_logo?: string | null;
+  location: string;
+  applied_at: string;
+}
+
+export interface KanbanBoardState {
+  saved: JobApplicationItem[];
+  applied: JobApplicationItem[];
+  interview: JobApplicationItem[];
+  assessment: JobApplicationItem[];
+  offer: JobApplicationItem[];
+  rejected: JobApplicationItem[];
+}
+
+export interface JobFilterState {
+  searchQuery: string;
+  role: string;
+  location: string;
+  remoteOnly: boolean;
+  experienceLevel: string;
+  employmentType: string;
+  nyscFriendly: boolean;
+  visaSponsorship: boolean;
+}

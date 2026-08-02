@@ -156,10 +156,16 @@ async def value_error_handler(request: Request, exc: ValueError):
 
 from backend.app.presentation.api_v1 import router as api_v1_router
 from backend.app.presentation.admin_api import router as admin_api_router
+from backend.app.presentation.ws_interview import router as ws_router
+from backend.app.presentation.job_board_api import router as job_board_router
+from backend.app.presentation.config_api import router as config_api_router
 
 # Include Routers
 app.include_router(api_v1_router)
 app.include_router(admin_api_router)
+app.include_router(ws_router)
+app.include_router(job_board_router)
+app.include_router(config_api_router)
 
 
 @app.get("/health", tags=["System Operations"], summary="Health Check")

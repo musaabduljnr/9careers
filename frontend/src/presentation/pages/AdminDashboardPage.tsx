@@ -13,12 +13,13 @@ import {
   LayoutDashboard, Settings, Cpu, Flag, CreditCard, FileText, Users,
   ShieldCheck, DollarSign, Mail, Activity, FileSpreadsheet, Download,
   Check, RefreshCw, Zap, AlertTriangle, UserCheck, Play, Lock, Eye, RotateCcw
-} from 'lucide-react';
+import { DynamicConfigManager } from '../components/admin/DynamicConfigManager';
+import { SlidersHorizontal } from 'lucide-react';
 
 export const AdminDashboardPage: React.FC = () => {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<
-    'dashboard' | 'settings' | 'ai' | 'features' | 'plans' | 'prompts' | 'users' | 'roles' | 'payments' | 'health' | 'audit'
+    'dashboard' | 'dynamic_config' | 'settings' | 'ai' | 'features' | 'plans' | 'prompts' | 'users' | 'roles' | 'payments' | 'health' | 'audit'
   >('dashboard');
 
   const [selectedPromptKey, setSelectedPromptKey] = useState<string>('resume_ats');
@@ -136,6 +137,7 @@ export const AdminDashboardPage: React.FC = () => {
 
   const navItems = [
     { id: 'dashboard', label: 'Global Dashboard', icon: LayoutDashboard },
+    { id: 'dynamic_config', label: 'Dynamic SaaS Config', icon: SlidersHorizontal },
     { id: 'settings', label: 'App Settings & Branding', icon: Settings },
     { id: 'ai', label: 'AI Engine Controls', icon: Cpu },
     { id: 'features', label: 'Feature Flags', icon: Flag },
@@ -199,6 +201,9 @@ export const AdminDashboardPage: React.FC = () => {
 
       {/* Main Control Panel Content */}
       <div className="w-full">
+        {/* ---------------- 0. DYNAMIC SAAS CONFIGURATION MANAGER ---------------- */}
+        {activeTab === 'dynamic_config' && <DynamicConfigManager />}
+
         {/* ---------------- 1. GLOBAL DASHBOARD ---------------- */}
         {activeTab === 'dashboard' && (
           <div className="flex flex-col gap-6">

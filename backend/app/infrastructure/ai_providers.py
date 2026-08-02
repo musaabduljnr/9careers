@@ -815,14 +815,36 @@ class AIProviderFactory:
     _instance: Optional[AIProvider] = None
 
     @classmethod
-    def get_provider(cls) -> AIProvider:
-        # Return resilient manager orchestrating primary and fallback providers
-        from backend.app.infrastructure.admin_data import admin_ai_settings
-        
-        active_provider = admin_ai_settings.get("active_provider", settings.AI_PROVIDER)
-        fallback_order = admin_ai_settings.get("fallback_order", ["gemini", "groq", "openrouter", "vertex", "mock"])
-        
+    def get_provider(cls, db_session=None) -> AIProvider:
+        # Load dynamic configurations if db_session is available
+        api_keys = {
+            "gemini": getattr(settings, 'GEMINI_API_KEY', ''),
+            "groq": getattr(settings, 'GROQ_API_KEY', ''),
+            "openrouter": getattr(settings, 'OPENROUTER_API_KEY', '')
+        }
+        active_provider = getattr(settings, 'AI_PROVIDER', 'gemini').lower()
+        fallback_order = ["gemini", "groq", "openrouter", "vertex", "mock"]
+
+        if db_session:
+            try:
+                from backend.app.infrastructure.config_service import ConfigService
+                cfg = ConfigService(db_session)
+                gemini_key = cfg.get_secret("ai.gemini.api_key") or api_keys["gemini"]
+                groq_key = cfg.get_secret("ai.groq.api_key") or api_keys["groq"]
+                openrouter_key = cfg.get_secret("ai.openrouter.api_key") or api_keys["openrouter"]
+                
+                if gemini_key: api_keys["gemini"] = gemini_key
+                if groq_key: api_keys["groq"] = groq_key
+                if openrouter_key: api_keys["openrouter"] = openrouter_key
+
+                priority_setting = cfg.get("ai.provider_priority")
+                if priority_setting and isinstance(priority_setting, list):
+                    fallback_order = priority_setting
+            except Exception as e:
+                logger.warning(f"[AIProviderFactory] Dynamic config load fallback: {e}")
+
         return ResilientAIProviderManager(
             primary_provider_name=active_provider,
-            fallback_order=fallback_order
+            fallback_order=fallback_order,
+            api_keys=api_keys
         )

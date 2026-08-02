@@ -115,29 +115,99 @@ class CoverLetterResponse(BaseModel):
     class Config:
         from_attributes = True
 
-# Interview Schemas
+# Enterprise Interview Simulator Schemas
+class InterviewSetupRequest(BaseModel):
+    interview_type: str = Field("Software Engineering", description="Interview mode: General HR, Behavioral, Technical, Software Engineering, Frontend, Backend, Python, React, AI Engineer, Data Analyst, Product Manager, UI/UX Designer, Customer Support, Sales, Graduate, NYSC, Internship, Remote Jobs, Custom")
+    job_role: str = Field(..., description="Target Job Role")
+    company: str = Field("", description="Target Company Name")
+    difficulty: str = Field("mid", description="junior, mid, senior, or principal")
+    duration_minutes: int = Field(20, description="10, 20, 30, or 45 minutes")
+    interview_style: str = Field("professional", description="friendly, professional, strict, startup, corporate")
+    voice_enabled: bool = Field(True, description="Enable live voice mode")
+    language: str = Field("en", description="Primary spoken language")
+    resume_text: Optional[str] = Field("", description="Raw resume text or parsed JSON text")
+    job_description: Optional[str] = Field("", description="Job posting description")
+
+class InterviewPrepProfileResponse(BaseModel):
+    candidate_summary: str
+    target_role: str
+    company: str
+    difficulty: str
+    key_strengths: List[str]
+    perceived_weaknesses: List[str]
+    missing_skills: List[str]
+    likely_questions: List[str]
+    interview_strategy: str
+    focus_areas: List[str]
+
 class InterviewStartRequest(BaseModel):
+    interview_type: str = "Software Engineering"
     job_role: str
-    industry: str
+    company: str = ""
+    industry: str = ""
+    difficulty: str = "mid"
+    duration_minutes: int = 20
+    interview_style: str = "professional"
+    voice_enabled: bool = True
+    language: str = "en"
+    resume_text: Optional[str] = ""
+    job_description: Optional[str] = ""
 
 class InterviewStartResponse(BaseModel):
     session_id: str
     job_role: str
-    industry: str
+    company: str
+    interview_type: str
+    difficulty: str
+    duration_minutes: int
     first_question: str
+    question_category: str
     question_order: int
+    prep_profile: Dict[str, Any]
 
 class InterviewResponseRequest(BaseModel):
     user_answer: str
+    elapsed_seconds: Optional[int] = 0
 
 class InterviewResponseResponse(BaseModel):
-    session_status: str
+    session_id: str
+    session_status: str # active, paused, completed
+    turn_score: int
+    scores_detail: Dict[str, Any]
     feedback: str
-    score: int
     next_question: Optional[str] = None
+    next_category: Optional[str] = None
     question_order: Optional[int] = None
     overall_feedback: Optional[str] = None
     overall_score: Optional[int] = None
+    elapsed_seconds: int = 0
+    remaining_seconds: int = 0
+
+class SessionActionRequest(BaseModel):
+    action: str = Field(..., description="pause, resume, restart, end")
+
+class SessionActionResponse(BaseModel):
+    session_id: str
+    status: str
+    message: str
+
+class InterviewReportResponse(BaseModel):
+    session_id: str
+    job_role: str
+    company: str
+    interview_type: str
+    difficulty: str
+    overall_score: int
+    hiring_recommendation: str
+    likelihood_of_passing_percent: int
+    category_scores: Dict[str, int]
+    strengths: List[str]
+    weaknesses: List[str]
+    missed_opportunities: List[str]
+    recommended_improvements: List[str]
+    suggested_learning_resources: List[str]
+    coach_advice: Dict[str, Any]
+    transcript: List[Dict[str, Any]]
 
 # Job Analysis Schemas
 class JobAnalysisRequest(BaseModel):
@@ -213,3 +283,98 @@ class GenerateInterviewQuestionsResponse(BaseModel):
     questions: List[InterviewQuestion]
     preparation_tips: List[str]
     company_research_notes: str
+
+
+# --- ENTERPRISE AI JOB BOARD SCHEMAS ---
+
+class JobMatchBreakdown(BaseModel):
+    overall_match_score: int
+    skill_match_score: int
+    experience_match_score: int
+    education_match_score: int
+    keyword_match_score: int
+    interview_likelihood_percent: int
+    readiness_percent: int
+    missing_skills: List[str]
+    missing_keywords: List[str]
+    match_reasons: List[str]
+    learning_path: List[str]
+
+class JobResponse(BaseModel):
+    id: int
+    title: str
+    company_name: str
+    company_logo: Optional[str] = None
+    source_name: str
+    location: str
+    remote_status: str
+    employment_type: str
+    experience_level: str
+    salary_formatted: str
+    skills: List[str]
+    tags: List[str]
+    date_posted: str
+    is_featured: bool = False
+    is_urgent: bool = False
+    visa_sponsorship: bool = False
+    nysc_friendly: bool = False
+    match: Optional[JobMatchBreakdown] = None
+
+class CompanySummary(BaseModel):
+    id: int
+    name: str
+    logo_url: Optional[str] = None
+    industry: str
+    open_positions_count: int
+    average_match_score: int
+
+class JobFeedResponse(BaseModel):
+    top_matches: List[JobResponse]
+    recently_posted: List[JobResponse]
+    remote_jobs: List[JobResponse]
+    urgent_hiring: List[JobResponse]
+    trending_companies: List[CompanySummary]
+    total_jobs_count: int
+
+class OneClickPrepResponse(BaseModel):
+    job_id: int
+    job_title: str
+    company_name: str
+    tailored_resume_text: str
+    cover_letter_text: str
+    estimated_ats_score: int
+    expected_interview_questions: List[str]
+    company_research_notes: str
+    application_checklist: List[str]
+
+class JobApplicationCreateRequest(BaseModel):
+    job_id: int
+    status: str = Field("applied", description="saved, applied, interview, assessment, offer, rejected, withdrawn")
+    notes: Optional[str] = None
+
+class JobApplicationResponse(BaseModel):
+    id: int
+    user_id: int
+    job_id: int
+    status: str
+    notes: Optional[str] = None
+    applied_at: datetime
+    updated_at: datetime
+
+class JobBookmarkCreateRequest(BaseModel):
+    job_id: int
+    collection_name: str = Field("Favorites", description="Favorites, Dream Companies, Remote Opportunities, Urgent Applications")
+
+class JobAlertCreateRequest(BaseModel):
+    title: str
+    role: Optional[str] = ""
+    location: Optional[str] = ""
+    remote_only: bool = False
+    min_salary: Optional[int] = None
+    frequency: str = "daily"
+
+class NaturalLanguageSearchRequest(BaseModel):
+    query: str = Field(..., description="e.g. React Developer Lagos, Python Remote, Graduate Trainee Abuja")
+    remote_only: bool = False
+    experience_level: Optional[str] = None
+    nysc_friendly: bool = False

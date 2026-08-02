@@ -134,3 +134,52 @@ class JobAnalysisRepository(ABC):
     @abstractmethod
     async def create(self, analysis: JobAnalysis) -> JobAnalysis:
         pass
+
+
+class JobProvider(ABC):
+    @abstractmethod
+    async def fetch_jobs(self, limit: int = 50) -> List[Any]:
+        """Fetch raw job postings from source and return normalized Job domain objects."""
+        pass
+
+
+class JobRepository(ABC):
+    @abstractmethod
+    async def get_by_id(self, job_id: int) -> Optional[Any]:
+        pass
+
+    @abstractmethod
+    async def list_jobs(self, filters: Dict[str, Any], limit: int = 50, offset: int = 0) -> List[Any]:
+        pass
+
+    @abstractmethod
+    async def create(self, job: Any) -> Any:
+        pass
+
+    @abstractmethod
+    async def update(self, job: Any) -> Any:
+        pass
+
+
+class CompanyRepository(ABC):
+    @abstractmethod
+    async def get_by_id(self, company_id: int) -> Optional[Any]:
+        pass
+
+    @abstractmethod
+    async def list_companies(self, limit: int = 50) -> List[Any]:
+        pass
+
+    @abstractmethod
+    async def create(self, company: Any) -> Any:
+        pass
+
+
+class JobApplicationRepository(ABC):
+    @abstractmethod
+    async def get_user_applications(self, user_id: int) -> List[Any]:
+        pass
+
+    @abstractmethod
+    async def create_or_update(self, application: Any) -> Any:
+        pass

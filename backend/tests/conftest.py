@@ -112,9 +112,21 @@ class MockAIProvider(AIProvider):
             
             # Additional response fields for evaluations
             "score": 80,
+            "overall_score": 80,
+            "scores_detail": {
+                "communication": 80, "technical_accuracy": 85, "problem_solving": 80,
+                "leadership": 75, "confidence": 80, "star_method": 80,
+                "clarity": 85, "depth": 80, "relevance": 85, "professionalism": 85
+            },
             "feedback": "Great STAR format application.",
             "next_question": "Explain a time when you resolved a conflict within a team.",
-            "report": "Final evaluation report content."
+            "report": "Final evaluation report content.",
+            "candidate_summary": "Mock candidate summary.",
+            "key_strengths": ["Technical skill", "Communication"],
+            "perceived_weaknesses": ["Metrics"],
+            "likely_questions": ["Tell me about yourself"],
+            "interview_strategy": "Focus on STAR responses",
+            "focus_areas": ["System Design"]
         }
 
     async def chat_completion(self, messages: list, system_instruction: str = None, temperature: float = 0.7) -> str:

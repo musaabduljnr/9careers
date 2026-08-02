@@ -239,49 +239,82 @@ class InterviewSimulatorUseCase:
         self.ai_provider = ai_provider
         self.interview_repo = interview_repo
         self.user_repo = user_repo
+        from backend.app.application.interview_engine import (
+            PreparationEngine, QuestionEngine, ScoringEngine, ReportEngine
+        )
+        self.prep_engine = PreparationEngine(ai_provider)
+        self.question_engine = QuestionEngine(ai_provider)
+        self.scoring_engine = ScoringEngine(ai_provider)
+        self.report_engine = ReportEngine(ai_provider)
 
-    async def start_session(self, user_id: int, job_role: str, industry: str) -> InterviewSession:
+    async def prepare_candidate(
+        self,
+        target_role: str,
+        company: str,
+        difficulty: str,
+        interview_type: str,
+        resume_text: str = "",
+        job_description: str = ""
+    ) -> Dict[str, Any]:
+        return await self.prep_engine.generate_prep_profile(
+            target_role=target_role,
+            company=company,
+            difficulty=difficulty,
+            interview_type=interview_type,
+            resume_text=resume_text,
+            job_description=job_description
+        )
+
+    async def start_session(
+        self,
+        user_id: int,
+        job_role: str,
+        company: str = "",
+        industry: str = "",
+        interview_type: str = "Software Engineering",
+        difficulty: str = "mid",
+        duration_minutes: int = 20,
+        interview_style: str = "professional",
+        voice_enabled: bool = True,
+        language: str = "en",
+        resume_text: str = "",
+        job_description: str = ""
+    ) -> InterviewSession:
         user = await self.user_repo.get_by_id(user_id)
-        user_name = user.full_name if user else "Candidate"
         
-        system_instruction = (
-            "You are an experienced HR Director at a leading firm in Nigeria (e.g. GTBank, Paystack, MTN, Unilever). "
-            "Your goal is to conduct a mock job interview for a candidate. "
-            "You ask one clear question at a time. "
-            "Adopt the voice of a professional, polite, yet strict interviewer. "
-            "Generate a welcoming first question appropriate for the job role and industry. "
-            "Mention the company/firm context naturally (e.g., 'Welcome to GTB, we are glad to have you for this Graduate Trainee interview...')."
+        # 1. Generate prep profile
+        prep_profile = await self.prepare_candidate(
+            target_role=job_role,
+            company=company,
+            difficulty=difficulty,
+            interview_type=interview_type,
+            resume_text=resume_text,
+            job_description=job_description
         )
-
-        prompt = (
-            f"Candidate Name: {user_name}\n"
-            f"Job Role: {job_role}\n"
-            f"Industry: {industry}\n"
-            f"NYSC Status: {user.nysc_status if user else 'Completed'}\n\n"
-            f"Generate the first interview question. Keep it brief and engaging."
-        )
-
-        schema = {
-            "question": "string (the first interview question)"
-        }
-
-        result_json = await self.ai_provider.generate_json(
-            prompt=prompt,
-            schema=json.dumps(schema, indent=2),
-            system_instruction=system_instruction
-        )
-
-        first_question_text = result_json.get("question", "Tell me about yourself and why you are interested in this role.")
-
+        
         session = InterviewSession(
             user_id=user_id,
+            interview_type=interview_type,
             job_role=job_role,
-            industry=industry,
-            status="active"
+            company=company,
+            industry=industry or "Technology",
+            difficulty=difficulty,
+            duration_minutes=duration_minutes,
+            interview_style=interview_style,
+            voice_enabled=voice_enabled,
+            language=language,
+            resume_text=resume_text,
+            job_description=job_description,
+            status="active",
+            elapsed_seconds=0,
+            prep_profile=prep_profile
         )
-        
+
+        # 2. Generate first recruiter question
+        first_q_text = await self.question_engine.generate_interviewer_question(session, order=1)
         first_q = InterviewQuestion(
-            question_text=first_question_text,
+            question_text=first_q_text,
+            category=self.question_engine.get_category_for_order(1),
             question_order=1
         )
         session.questions.append(first_q)
@@ -289,101 +322,104 @@ class InterviewSimulatorUseCase:
         saved_session = await self.interview_repo.create_session(session)
         return saved_session
 
-    async def respond_to_question(self, session_id: str, user_answer: str) -> Dict[str, Any]:
+    async def respond_to_question(
+        self,
+        session_id: str,
+        user_answer: str,
+        elapsed_seconds: int = 0
+    ) -> Dict[str, Any]:
         session = await self.interview_repo.get_session_by_id(session_id)
         if not session:
             raise ValueError(f"Interview session {session_id} not found")
         if session.status == "completed":
             raise ValueError("This interview session has already ended")
 
-        # Find the active unanswered question (the last one)
+        session.elapsed_seconds = elapsed_seconds or session.elapsed_seconds
+
+        # Find current active question
+        if not session.questions:
+            raise ValueError("No active questions found in session")
+
         active_q = session.questions[-1]
         active_q.user_answer = user_answer
 
-        # Evaluate the user's answer
-        eval_system_instruction = (
-            "You are an expert HR Interviewer in Nigeria. Evaluate the user's response to the interview question. "
-            "Score the answer from 0 to 100 based on structure (STAR method), clarity, relevance, and local business norms. "
-            "Highlight if they used appropriate terminology. "
-            "Point out any 'Nigerianisms' that could be optimized for a global or corporate audience (e.g. suggesting British/Standard equivalents if applicable, like 'did my internship' instead of 'ran my IT'). "
-            "Be constructive and supportive."
+        # Evaluate current response
+        eval_data = await self.scoring_engine.score_answer(
+            job_role=session.job_role,
+            difficulty=session.difficulty,
+            category=active_q.category,
+            question_text=active_q.question_text,
+            user_answer=user_answer
         )
 
-        eval_prompt = (
-            f"Job Role: {session.job_role}\n"
-            f"Question Asked: {active_q.question_text}\n"
-            f"User Answer: {user_answer}\n"
-            f"Please score the answer, provide detailed coaching tips, and give the next question or signal that this was the final question."
-        )
+        active_q.ai_score = eval_data.get("overall_score", 75)
+        active_q.scores_detail = eval_data.get("scores_detail", {})
+        active_q.ai_feedback = eval_data.get("feedback", "Good response.")
 
-        # Standard session length: 4 questions.
-        is_final_round = len(session.questions) >= 4
-
-        eval_schema = {
-            "score": "integer (0 to 100)",
-            "feedback": "string (constructive critique, pointing out pros and areas of improvement, and local corporate optimizations)",
-            "next_question": "string (the next question to ask, or empty string if this was the last round)"
-        }
-
-        eval_result = await self.ai_provider.generate_json(
-            prompt=eval_prompt,
-            schema=json.dumps(eval_schema, indent=2),
-            system_instruction=eval_system_instruction
-        )
-
-        # Update current question with feedback
-        active_q.ai_score = eval_result.get("score", 70)
-        active_q.ai_feedback = eval_result.get("feedback", "Good effort.")
         await self.interview_repo.update_question(active_q)
 
-        # Determine if we should end the interview
-        next_question_text = eval_result.get("next_question", "")
-        
-        if is_final_round or not next_question_text:
-            # End session and generate overall feedback
-            session.status = "completed"
-            
-            # Calculate average score
-            total_score = sum([q.ai_score or 0 for q in session.questions[:-1]]) + active_q.ai_score
-            avg_score = int(total_score / len(session.questions))
-            session.score = avg_score
+        # Update rolling conversation summary
+        session.conversation_summary = f"{session.conversation_summary}\nQ({active_q.category}): {active_q.question_text}\nA: {user_answer}"[:2500]
 
-            # Generate overall summary
-            summary_system = "You are a senior career mentor. Provide a summary review of the candidate's interview performance."
-            summary_prompt = (
-                f"Job Role: {session.job_role}\n"
-                f"Completed Interview questions and scores:\n" + 
-                "\n".join([f"Q: {q.question_text}\nA: {q.user_answer}\nScore: {q.ai_score}\nFeedback: {q.ai_feedback}" for q in session.questions]) + 
-                f"\n\nAverage Score: {avg_score}/100. Write a final feedback report summarizing their strengths and top 3 growth areas."
-            )
+        # Calculate expected questions count based on duration (e.g. 10m -> 4, 20m -> 6, 30m -> 8, 45m -> 10)
+        expected_questions = max(3, session.duration_minutes // 3)
+        current_count = len(session.questions)
+
+        if current_count >= expected_questions:
+            # Complete session and generate full evaluation report + AI Coach
+            session.status = "completed"
+            full_report = await self.report_engine.generate_report(session)
             
-            summary_schema = {"report": "string (detailed feedback report with Markdown formatting)"}
-            summary_result = await self.ai_provider.generate_json(summary_prompt, json.dumps(summary_schema), summary_system)
+            session.score = full_report.get("overall_score", 80)
+            session.feedback_overall = full_report.get("hiring_recommendation", "Hire")
+            session.category_scores = full_report.get("category_scores", {})
+            session.full_report = full_report
+            session.coach_advice = full_report.get("coach_advice", {})
             
-            session.feedback_overall = summary_result.get("report", "Excellent interview overall. Work on structuring your answers using the STAR format.")
             await self.interview_repo.update_session(session)
-            
+
             return {
+                "session_id": session_id,
                 "session_status": "completed",
+                "turn_score": active_q.ai_score,
+                "scores_detail": active_q.scores_detail,
                 "feedback": active_q.ai_feedback,
-                "score": active_q.ai_score,
                 "overall_feedback": session.feedback_overall,
-                "overall_score": session.score
+                "overall_score": session.score,
+                "elapsed_seconds": session.elapsed_seconds,
+                "remaining_seconds": 0
             }
         else:
-            # Add next question
+            # Generate next question
+            next_order = current_count + 1
+            next_q_text = await self.question_engine.generate_interviewer_question(
+                session, order=next_order, user_last_answer=user_answer
+            )
+            next_category = self.question_engine.get_category_for_order(next_order)
+
             next_q = InterviewQuestion(
-                question_text=next_question_text,
-                question_order=len(session.questions) + 1
+                question_text=next_q_text,
+                category=next_category,
+                question_order=next_order
             )
             await self.interview_repo.add_question(session.id, next_q)
-            
+            await self.interview_repo.update_session(session)
+
+            total_seconds = session.duration_minutes * 60
+            remaining_seconds = max(0, total_seconds - session.elapsed_seconds)
+
             return {
+                "session_id": session_id,
                 "session_status": "active",
-                "feedback": active_q.ai_feedback,
                 "score": active_q.ai_score,
-                "next_question": next_question_text,
-                "question_order": next_q.question_order
+                "turn_score": active_q.ai_score,
+                "scores_detail": active_q.scores_detail,
+                "feedback": active_q.ai_feedback,
+                "next_question": next_q_text,
+                "next_category": next_category,
+                "question_order": next_order,
+                "elapsed_seconds": session.elapsed_seconds,
+                "remaining_seconds": remaining_seconds
             }
 
 

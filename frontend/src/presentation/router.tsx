@@ -19,6 +19,7 @@ const JobMatchPage = lazy(() => import('./pages/JobMatchPage').then(m => ({ defa
 const TemplateBuilderPage = lazy(() => import('./pages/TemplateBuilderPage').then(m => ({ default: m.TemplateBuilderPage })));
 const CareerInsightsPage = lazy(() => import('./pages/CareerInsightsPage').then(m => ({ default: m.CareerInsightsPage })));
 const AdminDashboardPage = lazy(() => import('./pages/AdminDashboardPage').then(m => ({ default: m.AdminDashboardPage })));
+const JobBoardPage = lazy(() => import('./pages/JobBoardPage').then(m => ({ default: m.JobBoardPage })));
 
 // Protected Layout Guard
 const ProtectedLayout: React.FC = () => {
@@ -94,6 +95,7 @@ export const AppRouter: React.FC = () => {
             {/* Protected Hub Routes */}
             <Route element={<ProtectedLayout />}>
               <Route path="/dashboard" element={<DashboardPage />} />
+              <Route path="/job-board" element={<JobBoardPage />} />
               <Route path="/resume-optimizer" element={<ResumeOptimizerPage />} />
               <Route path="/cover-letter" element={<CoverLetterPage />} />
               <Route path="/job-parser" element={<JobParserPage />} />
