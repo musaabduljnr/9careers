@@ -38,7 +38,6 @@ export const Sidebar: React.FC = () => {
     { name: 'Mock Interviews', path: '/interview-prep', icon: MessageSquareCode },
     { name: 'Interview Questions', path: '/interview-questions', icon: BrainCircuit },
     { name: 'Career Insights', path: '/career-insights', icon: Globe2 },
-    { name: 'Admin Dashboard', path: '/admin', icon: ShieldCheck },
   ];
 
   const handleLinkClick = () => {

@@ -85,7 +85,7 @@ export const InterviewPrepPage: React.FC = () => {
 
   // 4. View report for past session
   const viewPastReportMutation = useMutation({
-    mutationFn: async (sessionId: str) => {
+    mutationFn: async (sessionId: string | number) => {
       const res = await api.get<InterviewReportData>(`/api/v1/interviews/sessions/${sessionId}/report`);
       return res.data;
     },
@@ -129,7 +129,7 @@ export const InterviewPrepPage: React.FC = () => {
           <button
             onClick={() => {
               setSelectedTab('simulator');
-              if (stage === 'completed' || stage === 'report') resetSession();
+              if (stage === 'report') resetSession();
             }}
             className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
               selectedTab === 'simulator'

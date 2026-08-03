@@ -189,7 +189,7 @@ class InterviewAudioEngine {
 }
 
 function logger_warn(...args: any[]) {
-  if (process.env.NODE_ENV !== 'production') {
+  if (import.meta.env?.DEV) {
     console.warn('[AudioEngine]', ...args);
   }
 }

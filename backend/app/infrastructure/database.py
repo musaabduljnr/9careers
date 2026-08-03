@@ -38,6 +38,7 @@ class DBUser(Base):
     subscription_plan = Column(String, default="free")
     subscription_status = Column(String, default="active")
     subscription_expires_at = Column(DateTime, nullable=True)
+    role = Column(String, default="user")
     created_at = Column(DateTime, default=datetime.utcnow)
 
     resumes = relationship("DBResume", back_populates="user", cascade="all, delete-orphan")
@@ -424,6 +425,28 @@ class DBRolePermission(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class DBOrganization(Base):
+    __tablename__ = "organizations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False, unique=True, index=True)
+    slug = Column(String, nullable=False, unique=True, index=True)
+    billing_plan = Column(String, default="free")
+    status = Column(String, default="active") # active, suspended, deactivated
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class DBOrganizationMember(Base):
+    __tablename__ = "organization_members"
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    role = Column(String, default="member") # owner, admin, member
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+
 class DBCMSContent(Base):
     __tablename__ = "cms_content"
 
@@ -484,6 +507,7 @@ def to_domain_user(db_user: DBUser) -> domain_models.User:
         subscription_plan=getattr(db_user, 'subscription_plan', 'free'),
         subscription_status=getattr(db_user, 'subscription_status', 'active'),
         subscription_expires_at=getattr(db_user, 'subscription_expires_at', None),
+        role=getattr(db_user, 'role', 'admin' if getattr(db_user, 'email', '') == 'admin@naijacareer.ai' else 'user'),
         created_at=db_user.created_at
     )
 
@@ -721,12 +745,19 @@ def get_db() -> Generator[Session, None, None]:
 def init_db():
     # Schema check for legacy app_settings table
     try:
-        from sqlalchemy import inspect
+        from sqlalchemy import inspect, text
         inspector = inspect(engine)
         if inspector.has_table("app_settings"):
             cols = [c["name"] for c in inspector.get_columns("app_settings")]
             if "id" not in cols:
                 DBAppSetting.__table__.drop(bind=engine, checkfirst=True)
+
+        if inspector.has_table("users"):
+            user_cols = [c["name"] for c in inspector.get_columns("users")]
+            if "role" not in user_cols:
+                with engine.connect() as conn:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN role VARCHAR DEFAULT 'user'"))
+                    conn.commit()
     except Exception as e:
         print(f"Migration check info: {e}")
 
@@ -748,9 +779,29 @@ def init_db():
                 is_verified=True,
                 provider="email",
                 subscription_plan="professional",
-                subscription_status="active"
+                subscription_status="active",
+                role="user"
             )
             db.add(demo_user)
+            db.commit()
+
+        existing_admin = db.query(DBUser).filter(DBUser.email == "admin@naijacareer.ai").first()
+        if not existing_admin:
+            admin_user = DBUser(
+                email="admin@naijacareer.ai",
+                hashed_password=hash_password("AdminSecret123!"),
+                full_name="System Admin",
+                nysc_status="completed",
+                is_verified=True,
+                provider="email",
+                subscription_plan="enterprise",
+                subscription_status="active",
+                role="admin"
+            )
+            db.add(admin_user)
+            db.commit()
+        elif getattr(existing_admin, 'role', 'user') != "admin":
+            existing_admin.role = "admin"
             db.commit()
 
         # Seed default Dynamic Configuration Settings

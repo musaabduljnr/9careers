@@ -4,13 +4,15 @@ Admin Operating System Repository Layer
 Database CRUD, seed data initialization, and audit logging for Enterprise Admin Control Center.
 """
 
+import json
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 from sqlalchemy.orm import Session
 from backend.app.infrastructure.database import (
     DBAppSetting, DBAIEngineConfig, DBFeatureFlag, DBSubscriptionPlan,
     DBPromptTemplate, DBAuditLog, DBRolePermission, DBCMSContent,
-    DBPaymentSetting, DBEmailSetting, DBUser, DBTransaction
+    DBPaymentSetting, DBEmailSetting, DBUser, DBTransaction,
+    DBOrganization, DBOrganizationMember
 )
 
 class AdminRepository:
@@ -24,7 +26,8 @@ class AdminRepository:
             self.db.add(DBAppSetting(
                 key="general_settings",
                 category="general",
-                value_json={
+                data_type="json",
+                value=json.dumps({
                     "app_name": "Naija Career AI",
                     "logo_url": "/logo.svg",
                     "favicon_url": "/favicon.ico",
@@ -37,7 +40,7 @@ class AdminRepository:
                     "registration_enabled": True,
                     "allow_guest_usage": False,
                     "email_verification_required": True
-                }
+                })
             ))
 
         # 2. AI Engine Configs
@@ -152,6 +155,16 @@ class AdminRepository:
         for r in roles_data:
             if not self.db.query(DBRolePermission).filter(DBRolePermission.role_key == r["role_key"]).first():
                 self.db.add(DBRolePermission(**r))
+
+        # 8. Organizations (Future-Ready)
+        if not self.db.query(DBOrganization).first():
+            orgs = [
+                {"name": "Naija Tech Ltd", "slug": "naija-tech", "billing_plan": "enterprise", "status": "active"},
+                {"name": "Global Talent Hub", "slug": "global-talent", "billing_plan": "pro", "status": "active"},
+                {"name": "Startup Academy", "slug": "startup-academy", "billing_plan": "free", "status": "suspended"}
+            ]
+            for o in orgs:
+                self.db.add(DBOrganization(**o))
 
         self.db.commit()
 

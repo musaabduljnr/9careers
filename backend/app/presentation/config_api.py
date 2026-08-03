@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from backend.app.domain.models import User
 from backend.app.infrastructure.database import get_db, DBSettingAuditLog
 from backend.app.infrastructure.security import get_current_user
+from backend.app.presentation.admin_api import verify_admin
 from backend.app.infrastructure.config_service import ConfigService
 
 logger = logging.getLogger(__name__)
@@ -40,7 +41,7 @@ class TestPaymentGatewayRequest(BaseModel):
 @router.get("/settings", summary="Get All Configuration Settings (Masked Secrets)")
 async def get_all_settings(
     category: Optional[str] = Query(None, description="Filter settings by category"),
-    _: User = Depends(get_current_user),
+    _: User = Depends(verify_admin),
     db: Session = Depends(get_db)
 ):
     service = ConfigService(db)
@@ -52,7 +53,7 @@ async def get_all_settings(
 async def update_setting(
     key: str,
     req: SettingUpdateRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(verify_admin),
     db: Session = Depends(get_db)
 ):
     service = ConfigService(db)
@@ -75,7 +76,7 @@ async def update_setting(
 @router.post("/reveal", summary="Reveal Unmasked Secret Value for Authorized Admins")
 async def reveal_secret_value(
     req: RevealSecretRequest,
-    _: User = Depends(get_current_user),
+    _: User = Depends(verify_admin),
     db: Session = Depends(get_db)
 ):
     service = ConfigService(db)
@@ -86,7 +87,7 @@ async def reveal_secret_value(
 @router.post("/test-ai", summary="Test AI Provider Connection Diagnostics")
 async def test_ai_provider_connection(
     req: TestAIProviderRequest,
-    _: User = Depends(get_current_user)
+    _: User = Depends(verify_admin)
 ):
     provider = req.provider_name.lower()
     start_time = httpx.options if hasattr(httpx, 'options') else None
@@ -135,7 +136,7 @@ async def test_ai_provider_connection(
 @router.post("/test-smtp", summary="Test SMTP Outgoing Email Connection")
 async def test_smtp_connection(
     req: TestSMTPRequest,
-    _: User = Depends(get_current_user)
+    _: User = Depends(verify_admin)
 ):
     try:
         server = smtplib.SMTP(req.smtp_host, req.smtp_port, timeout=8)
@@ -151,7 +152,7 @@ async def test_smtp_connection(
 @router.post("/test-payment", summary="Test Payment Gateway Integration Keys")
 async def test_payment_gateway(
     req: TestPaymentGatewayRequest,
-    _: User = Depends(get_current_user)
+    _: User = Depends(verify_admin)
 ):
     if req.gateway.lower() == "paystack":
         url = "https://api.paystack.co/bank"
@@ -170,7 +171,7 @@ async def test_payment_gateway(
 
 @router.get("/export", summary="Export All Dynamic Configurations JSON")
 async def export_settings(
-    _: User = Depends(get_current_user),
+    _: User = Depends(verify_admin),
     db: Session = Depends(get_db)
 ):
     service = ConfigService(db)
@@ -185,7 +186,7 @@ async def export_settings(
 @router.get("/audit-logs", summary="Get Setting Audit Log Trail")
 async def get_audit_logs(
     limit: int = Query(50, ge=1, le=200),
-    _: User = Depends(get_current_user),
+    _: User = Depends(verify_admin),
     db: Session = Depends(get_db)
 ):
     logs = db.query(DBSettingAuditLog).order_by(DBSettingAuditLog.created_at.desc()).limit(limit).all()

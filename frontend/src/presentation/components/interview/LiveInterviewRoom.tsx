@@ -81,7 +81,7 @@ export const LiveInterviewRoom: React.FC<LiveInterviewRoomProps> = ({ onEndSessi
       onSpeakingStart: () => setSpeaking(true),
       onSpeakingEnd: () => setSpeaking(false),
       onFrequencyUpdate: (freqs) => setAudioFrequencyData(freqs),
-      onTranscriptResult: (text, isFinal) => {
+      onTranscriptResult: (text, _isFinal) => {
         setTextAnswer(text);
       },
       onError: (err) => console.warn('[Audio Error]', err)

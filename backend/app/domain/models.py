@@ -22,6 +22,7 @@ class User:
     subscription_plan: str = "free" # free, pro, graduate_pass, enterprise
     subscription_status: str = "active" # active, trialing, cancelled, past_due
     subscription_expires_at: Optional[datetime] = None
+    role: str = "user" # user, admin
     created_at: datetime = field(default_factory=datetime.utcnow)
 
 @dataclass

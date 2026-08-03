@@ -57,6 +57,10 @@ class Token(BaseModel):
 class TokenResponse(Token):
     pass
 
+class AdminLoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+
 class UserResponse(BaseModel):
     id: int
     email: str
@@ -71,6 +75,7 @@ class UserResponse(BaseModel):
     subscription_plan: str = "free"
     subscription_status: str = "active"
     subscription_expires_at: Optional[datetime] = None
+    role: str = "user"
     created_at: datetime
 
     class Config:

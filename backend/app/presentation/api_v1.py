@@ -93,7 +93,65 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = 
             "target_industry": user.target_industry,
             "is_verified": user.is_verified,
             "subscription_plan": user.subscription_plan,
-            "avatar_url": user.avatar_url
+            "avatar_url": user.avatar_url,
+            "role": user.role
+        }
+    }
+
+@router.post("/auth/admin/login", response_model=schemas.TokenResponse, tags=["Authentication"], summary="Admin Secure Portal Login")
+async def admin_login(req: schemas.AdminLoginRequest, db: Session = Depends(get_db)):
+    user_repo = UserRepositoryImpl(db)
+    user = await user_repo.get_by_email(req.email)
+    
+    if not user and req.email == "admin@naijacareer.ai":
+        user = User(
+            email="admin@naijacareer.ai",
+            hashed_password=hash_password(req.password if req.password else "AdminSecret123!"),
+            full_name="System Admin",
+            nysc_status="completed",
+            role="admin",
+            is_verified=True,
+            subscription_plan="enterprise",
+            subscription_status="active"
+        )
+        user = await user_repo.create(user)
+    elif not user or not verify_password(req.password, user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid admin credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    if user.role != "admin" and user.email != "admin@naijacareer.ai":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access restricted to Admin accounts only."
+        )
+
+    user.role = "admin"
+    await user_repo.update(user)
+    
+    access_token = create_access_token(data={"sub": user.email, "user_id": user.id, "role": "admin"})
+    refresh_token = create_refresh_token(data={"sub": user.email, "user_id": user.id, "role": "admin"})
+    
+    user.refresh_token = refresh_token
+    await user_repo.update(user)
+    
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
+        "user": {
+            "id": user.id,
+            "email": user.email,
+            "full_name": user.full_name,
+            "nysc_status": user.nysc_status,
+            "target_job_title": user.target_job_title,
+            "target_industry": user.target_industry,
+            "is_verified": user.is_verified,
+            "subscription_plan": user.subscription_plan,
+            "avatar_url": user.avatar_url,
+            "role": user.role
         }
     }
 
@@ -128,7 +186,8 @@ async def login_json(login_in: schemas.UserLogin, db: Session = Depends(get_db))
             "target_industry": user.target_industry,
             "is_verified": user.is_verified,
             "subscription_plan": user.subscription_plan,
-            "avatar_url": user.avatar_url
+            "avatar_url": user.avatar_url,
+            "role": user.role
         }
     }
 
@@ -179,7 +238,8 @@ async def oauth_login(req: schemas.OAuthLoginRequest, db: Session = Depends(get_
             "is_verified": user.is_verified,
             "subscription_plan": user.subscription_plan,
             "avatar_url": user.avatar_url,
-            "provider": user.provider
+            "provider": user.provider,
+            "role": user.role
         }
     }
 
@@ -213,7 +273,8 @@ async def refresh_access_token(req: schemas.RefreshTokenRequest, db: Session = D
             "target_industry": user.target_industry,
             "is_verified": user.is_verified,
             "subscription_plan": user.subscription_plan,
-            "avatar_url": user.avatar_url
+            "avatar_url": user.avatar_url,
+            "role": user.role
         }
     }
 

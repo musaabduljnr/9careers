@@ -192,7 +192,7 @@ export const InterviewReportView: React.FC<InterviewReportViewProps> = ({
           <div className="space-y-2">
             <h4 className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Learning Links</h4>
             <ul className="space-y-1.5 text-xs text-slate-600 dark:text-slate-400">
-              {report.suggested_learning_resources?.map((res, idx) => (
+              {report.suggested_learning_resources?.map((res: string, idx: number) => (
                 <li key={idx} className="flex items-start gap-2">
                   <BookOpen className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" />
                   <span>{res}</span>

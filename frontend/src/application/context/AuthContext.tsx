@@ -19,6 +19,7 @@ interface AuthContextType {
   login: (values: LoginFormValues) => Promise<void>;
   register: (values: RegisterFormValues) => Promise<void>;
   loginOAuth: (values: OAuthValues) => Promise<void>;
+  loginAdmin: (values: LoginFormValues) => Promise<void>;
   forgotPassword: (email: string) => Promise<string>;
   logout: () => void;
   updateProfile: (values: Partial<User>) => Promise<void>;
@@ -68,6 +69,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(userData);
     } catch (err: any) {
       setError(err.message || 'Login failed. Please verify credentials.');
+      setIsLoading(false);
+      throw err;
+    }
+  };
+
+  const loginAdmin = async (values: LoginFormValues) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const res = await api.post<AuthResponse>('/api/v1/auth/admin/login', values);
+      const { access_token, refresh_token: rToken, user: userData } = res.data;
+
+      localStorage.setItem('token', access_token);
+      if (rToken) localStorage.setItem('refresh_token', rToken);
+      localStorage.setItem('user', JSON.stringify(userData));
+
+      setToken(access_token);
+      if (rToken) setRefreshToken(rToken);
+      setUser(userData);
+    } catch (err: any) {
+      setError(err.message || 'Admin Login failed. Verify admin credentials.');
       setIsLoading(false);
       throw err;
     }
@@ -153,6 +175,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     login,
     register,
     loginOAuth,
+    loginAdmin,
     forgotPassword,
     logout,
     updateProfile,

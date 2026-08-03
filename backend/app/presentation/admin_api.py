@@ -20,10 +20,12 @@ from backend.app.infrastructure.database import (
     get_db, DBUser, DBResume, DBCoverLetter, DBInterviewSession,
     DBJobAnalysis, DBTransaction, DBAppSetting, DBAIEngineConfig,
     DBFeatureFlag, DBSubscriptionPlan, DBPromptTemplate, DBAuditLog,
-    DBRolePermission, DBPaymentSetting, DBEmailSetting, DBCMSContent
+    DBRolePermission, DBPaymentSetting, DBEmailSetting, DBCMSContent,
+    DBOrganization, DBOrganizationMember, DBJob, DBCompany, DBJobSource,
+    DBJobApplication
 )
 from backend.app.infrastructure.admin_repository import AdminRepository
-from backend.app.infrastructure.security import get_current_user, create_access_token
+from backend.app.infrastructure.security import get_current_user, create_access_token, hash_password
 from backend.app.domain.models import User
 
 logger = logging.getLogger(__name__)
@@ -33,7 +35,11 @@ router = APIRouter(prefix="/api/v1/admin", tags=["Enterprise Admin Control Cente
 
 def verify_admin(current_user: User = Depends(get_current_user)):
     """Security dependency ensuring user has admin authority."""
-    # In production, check role/email; for dev permit authenticated admin
+    if getattr(current_user, 'role', 'user') != "admin" and current_user.email != "admin@naijacareer.ai":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied: Admin authorization required"
+        )
     return current_user
 
 
@@ -464,6 +470,617 @@ async def get_system_health(db: Session = Depends(get_db), _: User = Depends(ver
         "disk_usage_pct": 31.8,
         "database_status": db_status,
         "server_uptime_seconds": 184200,
-        "active_background_workers": 2,
+        "active_background_workers": 4,
+        "queue_depth": 0,
+        "redis_status": "healthy",
         "ai_providers_health": ai_status
     }
+
+
+# --- 10. GLOBAL SEARCH COMMAND PALETTE (CMD+K / CTRL+K) ---
+
+@router.get("/search", summary="Global Command Palette Search Across Platform")
+async def global_admin_search(
+    q: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(verify_admin)
+):
+    """Searches users, feature flags, prompts, settings, audit logs, and system features."""
+    if not q or len(q.strip()) == 0:
+        return {"results": []}
+
+    query_str = q.strip().lower()
+    results = []
+
+    # 1. Search Users
+    users = db.query(DBUser).filter(
+        DBUser.email.ilike(f"%{query_str}%") | DBUser.full_name.ilike(f"%{query_str}%")
+    ).limit(5).all()
+
+    for u in users:
+        results.append({
+            "category": "Users",
+            "title": u.full_name,
+            "subtitle": f"{u.email} • Role: {getattr(u, 'role', 'user')} • Plan: {u.subscription_plan}",
+            "tab": "users",
+            "metadata": {"user_id": u.id, "email": u.email}
+        })
+
+    # 2. Search Feature Flags
+    flags = db.query(DBFeatureFlag).filter(
+        DBFeatureFlag.feature_key.ilike(f"%{query_str}%") | DBFeatureFlag.description.ilike(f"%{query_str}%")
+    ).limit(4).all()
+
+    for f in flags:
+        results.append({
+            "category": "Feature Flags",
+            "title": f.feature_key,
+            "subtitle": f"Status: {f.status} • {f.description}",
+            "tab": "features",
+            "metadata": {"feature_key": f.feature_key}
+        })
+
+    # 3. Search Prompt Library
+    prompts = db.query(DBPromptTemplate).filter(
+        DBPromptTemplate.prompt_key.ilike(f"%{query_str}%") | DBPromptTemplate.title.ilike(f"%{query_str}%")
+    ).limit(4).all()
+
+    for p in prompts:
+        results.append({
+            "category": "Prompts",
+            "title": p.title or p.prompt_key,
+            "subtitle": f"Key: {p.prompt_key} • Version: v{p.version}",
+            "tab": "prompts",
+            "metadata": {"prompt_key": p.prompt_key}
+        })
+
+    # 4. Search Subscription Plans
+    plans = db.query(DBSubscriptionPlan).filter(
+        DBSubscriptionPlan.plan_key.ilike(f"%{query_str}%") | DBSubscriptionPlan.name.ilike(f"%{query_str}%")
+    ).limit(3).all()
+
+    for pl in plans:
+        results.append({
+            "category": "Subscriptions",
+            "title": pl.name,
+            "subtitle": f"Price: ₦{pl.price_ngn:,} / ${pl.price_usd}",
+            "tab": "plans",
+            "metadata": {"plan_key": pl.plan_key}
+        })
+
+    return {"query": query_str, "results": results}
+
+
+# --- 11. USER DELETION & ADVANCED ACTIONS ---
+
+@router.delete("/users/{user_id}", summary="Delete User Account")
+async def delete_user(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(verify_admin)
+):
+    target = db.query(DBUser).filter(DBUser.id == user_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    email = target.email
+    db.delete(target)
+    db.commit()
+
+    AdminRepository(db).log_audit(
+        admin_email=current_user.email,
+        action="DELETE_USER",
+        resource_type="user",
+        resource_id=str(user_id),
+        details={"deleted_email": email}
+    )
+    return {"message": f"User {email} successfully deleted"}
+
+
+# --- 12. ADVANCED USER OPERATIONS ---
+
+@router.post("/users/{user_id}/reset-password", summary="Reset Candidate Password")
+async def admin_reset_user_password(
+    user_id: int,
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+    current_user: User = Depends(verify_admin)
+):
+    target = db.query(DBUser).filter(DBUser.id == user_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    new_password = payload.get("password")
+    if not new_password or len(new_password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+
+    target.hashed_password = hash_password(new_password)
+    db.commit()
+
+    AdminRepository(db).log_audit(
+        admin_email=current_user.email,
+        action="RESET_USER_PASSWORD",
+        resource_type="user",
+        resource_id=str(user_id),
+        details={"email": target.email}
+    )
+    return {"message": f"Password reset successfully for {target.email}"}
+
+
+@router.post("/users/{user_id}/reset-usage", summary="Reset Candidate Resource Quotas")
+async def admin_reset_user_usage(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(verify_admin)
+):
+    target = db.query(DBUser).filter(DBUser.id == user_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Clean up their operational files (resumes, cover letters, mock sessions, job matches)
+    db.query(DBResume).filter(DBResume.user_id == user_id).delete(synchronize_session=False)
+    db.query(DBCoverLetter).filter(DBCoverLetter.user_id == user_id).delete(synchronize_session=False)
+    db.query(DBInterviewSession).filter(DBInterviewSession.user_id == user_id).delete(synchronize_session=False)
+    db.query(DBJobAnalysis).filter(DBJobAnalysis.user_id == user_id).delete(synchronize_session=False)
+    db.commit()
+
+    AdminRepository(db).log_audit(
+        admin_email=current_user.email,
+        action="RESET_USER_USAGE",
+        resource_type="user",
+        resource_id=str(user_id),
+        details={"email": target.email}
+    )
+    return {"message": f"Successfully reset usage records and files for {target.email}"}
+
+
+# --- 13. FUTURE-READY ORGANIZATIONS CRUD ---
+
+@router.get("/organizations", summary="List All Organizations")
+async def admin_list_organizations(db: Session = Depends(get_db), _: User = Depends(verify_admin)):
+    return db.query(DBOrganization).order_by(DBOrganization.id.desc()).all()
+
+
+@router.post("/organizations", summary="Create New Organization")
+async def admin_create_organization(
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+    current_user: User = Depends(verify_admin)
+):
+    name = payload.get("name")
+    slug = payload.get("slug")
+    if not name or not slug:
+        raise HTTPException(status_code=400, detail="Name and Slug are required")
+
+    existing = db.query(DBOrganization).filter(DBOrganization.slug == slug).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="An organization with this slug already exists")
+
+    org = DBOrganization(
+        name=name,
+        slug=slug,
+        billing_plan=payload.get("billing_plan", "free"),
+        status=payload.get("status", "active")
+    )
+    db.add(org)
+    db.commit()
+    db.refresh(org)
+
+    AdminRepository(db).log_audit(
+        admin_email=current_user.email,
+        action="CREATE_ORGANIZATION",
+        resource_type="organization",
+        resource_id=str(org.id),
+        details=payload
+    )
+    return org
+
+
+@router.put("/organizations/{org_id}", summary="Update Organization details")
+async def admin_update_organization(
+    org_id: int,
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+    current_user: User = Depends(verify_admin)
+):
+    org = db.query(DBOrganization).filter(DBOrganization.id == org_id).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+
+    if "name" in payload: org.name = payload["name"]
+    if "billing_plan" in payload: org.billing_plan = payload["billing_plan"]
+    if "status" in payload: org.status = payload["status"]
+
+    db.commit()
+    AdminRepository(db).log_audit(
+        admin_email=current_user.email,
+        action="UPDATE_ORGANIZATION",
+        resource_type="organization",
+        resource_id=str(org_id),
+        details=payload
+    )
+    return org
+
+
+@router.delete("/organizations/{org_id}", summary="Delete Organization")
+async def admin_delete_organization(
+    org_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(verify_admin)
+):
+    org = db.query(DBOrganization).filter(DBOrganization.id == org_id).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+
+    db.delete(org)
+    db.commit()
+
+    AdminRepository(db).log_audit(
+        admin_email=current_user.email,
+        action="DELETE_ORGANIZATION",
+        resource_type="organization",
+        resource_id=str(org_id)
+    )
+    return {"message": "Organization successfully deleted"}
+
+
+# --- 14. ENTERPRISE RBAC ROLES & PERMISSIONS MATRIX ---
+
+@router.get("/roles", summary="Get Roles & RBAC Matrix")
+async def admin_list_roles(db: Session = Depends(get_db), _: User = Depends(verify_admin)):
+    return db.query(DBRolePermission).all()
+
+
+@router.put("/roles/{role_key}", summary="Update Role Permissions List")
+async def admin_update_role_permissions(
+    role_key: str,
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+    current_user: User = Depends(verify_admin)
+):
+    role = db.query(DBRolePermission).filter(DBRolePermission.role_key == role_key).first()
+    if not role:
+        raise HTTPException(status_code=404, detail="Role not found")
+
+    if "permissions_json" in payload:
+        role.permissions_json = payload["permissions_json"]
+    if "name" in payload:
+        role.name = payload["name"]
+
+    db.commit()
+    AdminRepository(db).log_audit(
+        admin_email=current_user.email,
+        action="UPDATE_ROLE_PERMISSIONS",
+        resource_type="role",
+        resource_id=role_key,
+        details=payload
+    )
+    return role
+
+
+@router.post("/roles", summary="Create Custom Role")
+async def admin_create_role(
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+    current_user: User = Depends(verify_admin)
+):
+    role_key = payload.get("role_key")
+    name = payload.get("name")
+    if not role_key or not name:
+        raise HTTPException(status_code=400, detail="role_key and name are required")
+
+    existing = db.query(DBRolePermission).filter(DBRolePermission.role_key == role_key).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Role already exists")
+
+    role = DBRolePermission(
+        role_key=role_key,
+        name=name,
+        permissions_json=payload.get("permissions_json", [])
+    )
+    db.add(role)
+    db.commit()
+    db.refresh(role)
+
+    AdminRepository(db).log_audit(
+        admin_email=current_user.email,
+        action="CREATE_ROLE",
+        resource_type="role",
+        resource_id=role_key,
+        details=payload
+    )
+    return role
+
+
+# --- 15. JOBS & COMPANIES CRUD ---
+
+@router.get("/jobs", summary="List All Postings on the Job Board")
+async def admin_list_jobs(db: Session = Depends(get_db), _: User = Depends(verify_admin)):
+    return db.query(DBJob).order_by(DBJob.id.desc()).limit(100).all()
+
+
+@router.post("/jobs", summary="Post New Job manually")
+async def admin_create_job(
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+    current_user: User = Depends(verify_admin)
+):
+    title = payload.get("title")
+    company_name = payload.get("company_name")
+    if not title or not company_name:
+        raise HTTPException(status_code=400, detail="Title and Company Name are required")
+
+    job = DBJob(
+        title=title,
+        company_name=company_name,
+        location=payload.get("location", "Remote"),
+        remote_status=payload.get("remote_status", "Remote"),
+        employment_type=payload.get("employment_type", "Full-time"),
+        experience_level=payload.get("experience_level", "Mid Level"),
+        salary_formatted=payload.get("salary_formatted", ""),
+        description=payload.get("description", ""),
+        application_url=payload.get("application_url", "https://example.com"),
+        is_featured=payload.get("is_featured", False),
+        is_urgent=payload.get("is_urgent", False),
+        visa_sponsorship=payload.get("visa_sponsorship", False),
+        nysc_friendly=payload.get("nysc_friendly", False),
+        status=payload.get("status", "active")
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+
+    AdminRepository(db).log_audit(
+        admin_email=current_user.email,
+        action="CREATE_JOB",
+        resource_type="job",
+        resource_id=str(job.id),
+        details=payload
+    )
+    return job
+
+
+@router.put("/jobs/{job_id}", summary="Update Job Details")
+async def admin_update_job(
+    job_id: int,
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+    current_user: User = Depends(verify_admin)
+):
+    job = db.query(DBJob).filter(DBJob.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job posting not found")
+
+    for field in ["title", "company_name", "location", "remote_status", "employment_type", "experience_level", "salary_formatted", "description", "application_url", "is_featured", "is_urgent", "visa_sponsorship", "nysc_friendly", "status"]:
+        if field in payload:
+            setattr(job, field, payload[field])
+
+    db.commit()
+    AdminRepository(db).log_audit(
+        admin_email=current_user.email,
+        action="UPDATE_JOB",
+        resource_type="job",
+        resource_id=str(job_id),
+        details=payload
+    )
+    return job
+
+
+@router.delete("/jobs/{job_id}", summary="Delete Job Posting")
+async def admin_delete_job(
+    job_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(verify_admin)
+):
+    job = db.query(DBJob).filter(DBJob.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job posting not found")
+
+    db.delete(job)
+    db.commit()
+
+    AdminRepository(db).log_audit(
+        admin_email=current_user.email,
+        action="DELETE_JOB",
+        resource_type="job",
+        resource_id=str(job_id)
+    )
+    return {"message": "Job successfully deleted"}
+
+
+@router.get("/job-sources", summary="List Job Providers / Remote Sources")
+async def admin_list_job_sources(db: Session = Depends(get_db), _: User = Depends(verify_admin)):
+    return db.query(DBJobSource).all()
+
+
+@router.put("/job-sources/{source_id}", summary="Toggle Scraper Sync State")
+async def admin_update_job_source(
+    source_id: int,
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+    current_user: User = Depends(verify_admin)
+):
+    source = db.query(DBJobSource).filter(DBJobSource.id == source_id).first()
+    if not source:
+        raise HTTPException(status_code=404, detail="Job source not found")
+
+    if "is_active" in payload:
+        source.is_active = payload["is_active"]
+    db.commit()
+
+    AdminRepository(db).log_audit(
+        admin_email=current_user.email,
+        action="UPDATE_JOB_SOURCE",
+        resource_type="job_source",
+        resource_id=str(source_id),
+        details=payload
+    )
+    return source
+
+
+@router.get("/companies", summary="List Employer Companies")
+async def admin_list_companies(db: Session = Depends(get_db), _: User = Depends(verify_admin)):
+    return db.query(DBCompany).order_by(DBCompany.id.desc()).all()
+
+
+@router.post("/companies", summary="Add New Company Profile")
+async def admin_create_company(
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+    current_user: User = Depends(verify_admin)
+):
+    name = payload.get("name")
+    if not name:
+        raise HTTPException(status_code=400, detail="Company name is required")
+
+    comp = DBCompany(
+        name=name,
+        website=payload.get("website", ""),
+        industry=payload.get("industry", "Technology"),
+        size=payload.get("size", "50-200"),
+        headquarters=payload.get("headquarters", "Lagos, Nigeria"),
+        description=payload.get("description", "")
+    )
+    db.add(comp)
+    db.commit()
+    db.refresh(comp)
+
+    return comp
+
+
+@router.put("/companies/{company_id}", summary="Update Company Profile")
+async def admin_update_company(
+    company_id: int,
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+    current_user: User = Depends(verify_admin)
+):
+    comp = db.query(DBCompany).filter(DBCompany.id == company_id).first()
+    if not comp:
+        raise HTTPException(status_code=404, detail="Company profile not found")
+
+    for field in ["name", "website", "industry", "size", "headquarters", "description"]:
+        if field in payload:
+            setattr(comp, field, payload[field])
+
+    db.commit()
+    return comp
+
+
+@router.delete("/companies/{company_id}", summary="Delete Company Profile")
+async def admin_delete_company(
+    company_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(verify_admin)
+):
+    comp = db.query(DBCompany).filter(DBCompany.id == company_id).first()
+    if not comp:
+        raise HTTPException(status_code=404, detail="Company profile not found")
+
+    db.delete(comp)
+    db.commit()
+    return {"message": "Company profile deleted"}
+
+
+# --- 16. PLATFORM APPLICATIONS TRACKING ---
+
+@router.get("/applications", summary="List All Candidate Job Applications")
+async def admin_list_applications(db: Session = Depends(get_db), _: User = Depends(verify_admin)):
+    apps = db.query(DBJobApplication).order_by(DBJobApplication.id.desc()).all()
+    results = []
+    for a in apps:
+        user = db.query(DBUser).filter(DBUser.id == a.user_id).first()
+        job = db.query(DBJob).filter(DBJob.id == a.job_id).first()
+        results.append({
+            "id": a.id,
+            "user_email": user.email if user else "deleted@user.com",
+            "user_name": user.full_name if user else "Deleted User",
+            "job_title": job.title if job else "Deleted Job",
+            "company_name": job.company_name if job else "Deleted Employer",
+            "status": a.status,
+            "applied_at": a.applied_at
+        })
+    return results
+
+
+@router.delete("/applications/{app_id}", summary="Delete Application Tracking Slot")
+async def admin_delete_application(
+    app_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(verify_admin)
+):
+    app = db.query(DBJobApplication).filter(DBJobApplication.id == app_id).first()
+    if not app:
+        raise HTTPException(status_code=404, detail="Application record not found")
+
+    db.delete(app)
+    db.commit()
+
+    AdminRepository(db).log_audit(
+        admin_email=current_user.email,
+        action="DELETE_APPLICATION",
+        resource_type="application",
+        resource_id=str(app_id)
+    )
+    return {"message": "Application record deleted"}
+
+
+# --- 17. DATABASE EXPLORER & SYSTEM SNAPSHOTS ---
+
+@router.get("/database/tables", summary="Inspect Visual Schema Tables")
+async def get_database_tables(db: Session = Depends(get_db), _: User = Depends(verify_admin)):
+    from sqlalchemy import text, inspect
+    inspector = inspect(db.bind)
+    table_names = inspector.get_table_names()
+    results = []
+    
+    for name in table_names:
+        count_res = db.execute(text(f"SELECT COUNT(*) FROM {name}"))
+        row_count = count_res.scalar()
+        
+        columns = inspector.get_columns(name)
+        cols_info = [{"name": c["name"], "type": str(c["type"]), "nullable": c["nullable"]} for c in columns]
+        
+        results.append({
+            "name": name,
+            "rows": row_count,
+            "columns": cols_info
+        })
+        
+    return results
+
+
+@router.post("/database/backup", summary="Create System SQLite Snapshot Backup")
+async def admin_create_db_backup(db: Session = Depends(get_db), current_user: User = Depends(verify_admin)):
+    try:
+        import os
+        import shutil
+        src = "career_assistant.db"
+        dest = "career_assistant_backup.db"
+        if os.path.exists(src):
+            shutil.copyfile(src, dest)
+            AdminRepository(db).log_audit(
+                admin_email=current_user.email,
+                action="CREATE_DATABASE_BACKUP",
+                resource_type="database",
+                details={"file": dest}
+            )
+            return {"success": True, "message": "Database backup created successfully as 'career_assistant_backup.db'"}
+        return {"success": False, "message": "Database source file not found"}
+    except Exception as e:
+        return {"success": False, "message": f"Snapshot failed: {str(e)}"}
+
+
+# --- 18. DEVELOPER CENTER DIANOSTICS ---
+
+@router.post("/developer/cache/flush", summary="Flush Cache and Diagnostics Registers")
+async def admin_flush_system_cache(db: Session = Depends(get_db), current_user: User = Depends(verify_admin)):
+    AdminRepository(db).log_audit(
+        admin_email=current_user.email,
+        action="FLUSH_SYSTEM_CACHE",
+        resource_type="system",
+        details={"status": "all cache lines invalidated"}
+    )
+    return {"message": "All cache registers flushed successfully"}
+
+

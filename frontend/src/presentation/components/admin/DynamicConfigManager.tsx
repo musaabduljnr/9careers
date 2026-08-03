@@ -40,7 +40,7 @@ interface AuditLogItem {
   setting_key: string;
   old_value: string;
   new_value: string;
-  changed_by: str;
+  changed_by: string;
   created_at: string;
 }
 

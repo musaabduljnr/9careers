@@ -11,6 +11,7 @@ export interface User {
   phone_number?: string | null;
   subscription_plan?: 'free' | 'pro' | 'graduate_pass' | 'enterprise';
   subscription_status?: 'active' | 'trialing' | 'cancelled' | 'past_due';
+  role?: 'user' | 'admin';
   created_at: string;
 }
 
@@ -145,6 +146,7 @@ export interface JobAnalysis {
 
 export interface AuthResponse {
   access_token: string;
+  refresh_token?: string;
   token_type: string;
   user: User;
 }
@@ -289,6 +291,7 @@ export interface InterviewReportData {
   recommended_improvements: string[];
   coach_advice: CoachAdviceData;
   transcript: TranscriptItem[];
+  suggested_learning_resources?: string[];
 }
 
 // --- Enterprise AI Job Board Types ---
@@ -385,6 +388,7 @@ export interface KanbanBoardState {
   assessment: JobApplicationItem[];
   offer: JobApplicationItem[];
   rejected: JobApplicationItem[];
+  withdrawn?: JobApplicationItem[];
 }
 
 export interface JobFilterState {

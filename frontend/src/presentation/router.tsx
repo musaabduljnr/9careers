@@ -8,6 +8,7 @@ import { PageSkeletonLoader } from './components/Skeleton';
 // Code Splitting & Lazy Loading Page Modules
 const LandingPage = lazy(() => import('./pages/LandingPage').then(m => ({ default: m.LandingPage })));
 const AuthPage = lazy(() => import('./pages/AuthPage').then(m => ({ default: m.AuthPage })));
+const AdminLoginPage = lazy(() => import('./pages/AdminLoginPage').then(m => ({ default: m.AdminLoginPage })));
 const DashboardPage = lazy(() => import('./pages/DashboardPage').then(m => ({ default: m.DashboardPage })));
 const ResumeOptimizerPage = lazy(() => import('./pages/ResumeOptimizerPage').then(m => ({ default: m.ResumeOptimizerPage })));
 const CoverLetterPage = lazy(() => import('./pages/CoverLetterPage').then(m => ({ default: m.CoverLetterPage })));
@@ -76,6 +77,33 @@ const PublicRoute: React.FC = () => {
   );
 };
 
+// Admin Route Guard (Displays AdminLoginPage if not logged in as admin, else renders Admin Dashboard)
+const AdminRoute: React.FC = () => {
+  const { user, isAuthenticated, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-10 w-10 border-3 border-emerald-500 border-t-transparent" />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated || user?.role !== 'admin') {
+    return <AdminLoginPage />;
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-100 p-4 sm:p-6 lg:p-8">
+      <ErrorBoundary>
+        <Suspense fallback={<PageSkeletonLoader />}>
+          <AdminDashboardPage />
+        </Suspense>
+      </ErrorBoundary>
+    </div>
+  );
+};
+
 export const AppRouter: React.FC = () => {
   const { isAuthenticated } = useAuth();
 
@@ -92,6 +120,9 @@ export const AppRouter: React.FC = () => {
               <Route path="/auth" element={<AuthPage />} />
             </Route>
 
+            {/* Admin Route */}
+            <Route path="/admin" element={<AdminRoute />} />
+
             {/* Protected Hub Routes */}
             <Route element={<ProtectedLayout />}>
               <Route path="/dashboard" element={<DashboardPage />} />
@@ -105,7 +136,6 @@ export const AppRouter: React.FC = () => {
               <Route path="/interview-prep" element={<InterviewPrepPage />} />
               <Route path="/interview-questions" element={<InterviewQuestionsPage />} />
               <Route path="/career-insights" element={<CareerInsightsPage />} />
-              <Route path="/admin" element={<AdminDashboardPage />} />
             </Route>
 
             {/* Fallback */}

@@ -50,13 +50,12 @@ export const AuthPage: React.FC = () => {
     }
   });
 
-  const handleTabChange = (showLogin: boolean) => {
+  const handleTabChange = (toLogin: boolean) => {
     clearError();
+    setIsLogin(toLogin);
     setShowForgot(false);
-    setForgotMsg(null);
-    setIsLogin(showLogin);
-    if (showLogin) resetLoginForm();
-    else resetRegisterForm();
+    resetLoginForm();
+    resetRegisterForm();
   };
 
   const onLogin = async (data: LoginFormValues) => {
@@ -127,7 +126,7 @@ export const AuthPage: React.FC = () => {
   const nyscOptions = [
     { value: 'none', label: 'Not Serviced / Not Applicable' },
     { value: 'completed', label: 'Completed (Discharge Certificate)' },
-    { value: 'exempted', label: 'Exempted (Exemption Certificate)' },
+    { value: 'exempted', label: 'Exemption Certificate' },
     { value: 'serving', label: 'Currently Serving (Corper)' },
   ];
 
@@ -149,7 +148,7 @@ export const AuthPage: React.FC = () => {
 
         <Card className="relative overflow-hidden p-8 border border-slate-200/60 dark:border-slate-800 shadow-xl shadow-slate-100 dark:shadow-none">
           {/* Header tabs */}
-          <div className="flex w-full border-b border-slate-100 dark:border-slate-800 pb-3 mb-6 gap-6 justify-center">
+          <div className="flex w-full border-b border-slate-100 dark:border-slate-800 pb-3 mb-6 gap-4 justify-center">
             <button
               onClick={() => handleTabChange(true)}
               className={`pb-1 text-sm font-bold transition-all relative ${
@@ -180,7 +179,7 @@ export const AuthPage: React.FC = () => {
             </button>
           </div>
 
-          {/* Social OAuth Sign In Buttons */}
+          {/* Social OAuth Sign In Buttons for Candidates */}
           {!showForgot && (
             <div className="flex flex-col gap-2.5 mb-5 border-b border-slate-100 dark:border-slate-800 pb-5">
               <button
@@ -300,7 +299,12 @@ export const AuthPage: React.FC = () => {
                       </button>
                     </div>
                   </div>
-                  <Button variant="primary" type="submit" isLoading={isLoading} className="mt-2 w-full bg-emerald-500 hover:bg-emerald-600">
+                  <Button 
+                    variant="primary" 
+                    type="submit" 
+                    isLoading={isLoading} 
+                    className="mt-2 w-full bg-emerald-500 hover:bg-emerald-600"
+                  >
                     Sign In
                   </Button>
                 </motion.form>
